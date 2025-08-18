@@ -19,7 +19,9 @@ export class QueryLoggerService {
     duration: number;
     timestamp: Date;
   }): Promise<void> {
+    // console.log("LogData ->", logData);
     const logEntry = this.queryLogRepository.create(logData);
+    // console.log("LogEntry ->", logEntry);
     await this.queryLogRepository.save(logEntry);
   }
 

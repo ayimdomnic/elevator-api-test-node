@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import Redis from 'ioredis';
 import { ElevatorAggregate } from '../../domain/elevator.aggregate';
 import { ElevatorEntity, ElevatorEventEntity } from '../persistence/entities';
 import { ElevatorState, Floor } from '../../domain/value-objects';
@@ -12,6 +13,7 @@ export class ElevatorRepository {
     private readonly elevatorRepo: Repository<ElevatorEntity>,
     @InjectRepository(ElevatorEventEntity)
     private readonly eventRepo: Repository<ElevatorEventEntity>,
+    @Inject('REDIS_CLIENT') private readonly redis: Redis,
   ) {}
 
   async findById(id: string): Promise<ElevatorAggregate> {
@@ -25,6 +27,8 @@ export class ElevatorRepository {
         direction: 'IDLE',
       });
       await this.elevatorRepo.save(elevator);
+      
+      await this.updateRedisState(id, elevator);
     }
 
     const currentFloor = new Floor(elevator.currentFloor);
@@ -46,7 +50,6 @@ export class ElevatorRepository {
   }
 
   async save(aggregate: ElevatorAggregate): Promise<void> {
-    
     const elevatorData = {
       id: aggregate.id,
       currentFloor: aggregate.currentFloor,
@@ -55,13 +58,10 @@ export class ElevatorRepository {
       targetFloor: aggregate.targetFloor,
     };
 
+    await this.elevatorRepo.upsert(elevatorData, ['id']);
     
-    await this.elevatorRepo.upsert(
-      elevatorData,
-      ['id']
-    );
+    await this.updateRedisState(aggregate.id, elevatorData);
 
-    
     const events = aggregate.getUncommittedEvents();
     for (let i = 0; i < events.length; i++) {
       const event = events[i];
@@ -78,6 +78,20 @@ export class ElevatorRepository {
     aggregate.markEventsAsCommitted();
   }
 
+  private async updateRedisState(elevatorId: string, elevatorData: any): Promise<void> {
+    try {
+      await this.redis.hmset(`elevator:${elevatorId}:state`, {
+        currentFloor: elevatorData.currentFloor?.toString() || '0',
+        state: elevatorData.state || 'IDLE',
+        direction: elevatorData.direction || 'IDLE',
+        targetFloor: elevatorData.targetFloor?.toString() || '',
+        lastUpdated: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error(`Failed to update Redis state for elevator ${elevatorId}:`, error);
+    }
+  }
+
   private async getNextSequenceNumber(aggregateId: string): Promise<number> {
     const lastEvent = await this.eventRepo.findOne({
       where: { aggregateId },
@@ -91,7 +105,6 @@ export class ElevatorRepository {
   }
 
   async createElevator(elevatorId: string): Promise<ElevatorAggregate> {
-    
     const elevator = this.elevatorRepo.create({
       id: elevatorId,
       currentFloor: 0,
@@ -102,10 +115,23 @@ export class ElevatorRepository {
     });
     
     await this.elevatorRepo.save(elevator);
+    
+    await this.updateRedisState(elevatorId, elevator);
 
     const currentFloor = new Floor(0);
     const state = new ElevatorState('IDLE');
     
     return new ElevatorAggregate(elevatorId, currentFloor, state);
+  }
+
+  async getCurrentState(elevatorId: string): Promise<any> {
+    const state = await this.redis.hgetall(`elevator:${elevatorId}:state`);
+    return {
+      currentFloor: parseInt(state.currentFloor) || 0,
+      state: state.state || 'IDLE',
+      direction: state.direction || 'IDLE',
+      targetFloor: state.targetFloor ? parseInt(state.targetFloor) : null,
+      lastUpdated: state.lastUpdated,
+    };
   }
 }

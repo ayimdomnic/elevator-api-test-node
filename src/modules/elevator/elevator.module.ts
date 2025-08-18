@@ -35,6 +35,7 @@ import { getRedisConfig, getKafkaConfig } from '../../config';
 import { KafkaProducer } from './infrastructure/adapters/kafka.provider';
 import { ElevatorMovementQueue } from './infrastructure/adapters/elevator.queue';
 import { LoggingModule } from '../logging';
+import { RealtimeStatusService } from './application/services/realtime-status.service';
 
 @Module({
   imports: [
@@ -50,12 +51,11 @@ import { LoggingModule } from '../logging';
     {
       provide: 'REDIS_CLIENT',
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) =>{
+      useFactory: (configService: ConfigService) => {
         const config = getRedisConfig(configService);
         return new Redis(config);
       },
     },
-
     {
       provide: 'KAFKA_CLIENT',
       inject: [ConfigService],
@@ -80,17 +80,16 @@ import { LoggingModule } from '../logging';
     KafkaProducerAdapter,
     ElevatorMovementQueue,
     MovementProcessor,
+    KafkaProducer,
     CallElevatorHandler,
     InitializeElevatorHandler,
     GetElevatorStatusHandler,
     GetAllElevatorsHandler,
     GetElevatorLogsHandler,
     ElevatorCalledHandler,
-    ElevatorMovementQueue,
     ElevatorMovingHandler,
     ElevatorArrivedHandler,
-    KafkaProducerAdapter,
-    KafkaProducer,
+    RealtimeStatusService,
   ],
   exports: [ElevatorRepository, WebSocketAdapter],
 })

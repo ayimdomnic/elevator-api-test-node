@@ -62,15 +62,12 @@ export class ElevatorController {
   @ApiResponse({ status: 200, type: [ElevatorLogsDto] })
   async getElevatorLogs(
     @Param('id') elevatorId: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('limit') limit?: number,
   ) {
     return this.queryBus.execute(
       new GetElevatorLogsQuery(
         elevatorId,
-        startDate ? new Date(startDate) : undefined,
-        endDate ? new Date(endDate) : undefined,
+        new Date(Date.now() - 1000 * 60 * 60 * 24),
+        new Date(),
       )
     );
   }

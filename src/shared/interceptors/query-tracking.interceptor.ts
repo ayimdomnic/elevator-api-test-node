@@ -21,8 +21,8 @@ export class QueryTrackingInterceptor implements NestInterceptor {
       tap(async () => {
         const endTime = Date.now();
         const duration = endTime - startTime;
-
-        await this.queryLogger.logQuery({
+        // console.log("Request ->", request);
+       await this.queryLogger.logQuery({
           method: request.method,
           url: request.url,
           userId: request.user?.id,

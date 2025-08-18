@@ -53,7 +53,7 @@ export class ElevatorRepository {
   }
 
   async save(aggregate: ElevatorAggregate): Promise<void> {
-    // Convert domain types to database types
+    
     const elevatorData = {
       id: aggregate.id,
       currentFloor: aggregate.currentFloor,
@@ -62,13 +62,13 @@ export class ElevatorRepository {
       targetFloor: aggregate.targetFloor,
     };
 
-    // Save current state snapshot
+    
     await this.elevatorRepo.upsert(
       elevatorData,
       ['id']
     );
 
-    // Save events
+    
     const events = aggregate.getUncommittedEvents();
     for (let i = 0; i < events.length; i++) {
       const event = events[i];
@@ -95,5 +95,24 @@ export class ElevatorRepository {
 
   async findAll(): Promise<ElevatorEntity[]> {
     return this.elevatorRepo.find({ where: { isActive: true } });
+  }
+
+  async createElevator(elevatorId: string): Promise<ElevatorAggregate> {
+    
+    const elevator = this.elevatorRepo.create({
+      id: elevatorId,
+      currentFloor: 0,
+      state: 'IDLE',
+      direction: 'IDLE',
+      targetFloor: null,
+      isActive: true,
+    });
+    
+    await this.elevatorRepo.save(elevator);
+
+    const currentFloor = new Floor(0);
+    const state = new ElevatorState('IDLE');
+    
+    return new ElevatorAggregate(elevatorId, currentFloor, state);
   }
 }

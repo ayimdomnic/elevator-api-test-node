@@ -13,7 +13,7 @@ export class InitializeElevatorHandler implements ICommandHandler<InitializeElev
   constructor(private readonly repository: ElevatorRepository) {}
 
   async execute(command: InitializeElevatorCommand): Promise<{ elevatorId: string }> {
-    const elevatorId = `elevator-${uuidv4()}`;
+    const elevatorId = `${uuidv4()}`;
     const initialFloor = command.initialFloor || 0;
 
     this.logger.log(`Initializing new elevator ${elevatorId} at floor ${initialFloor}`);

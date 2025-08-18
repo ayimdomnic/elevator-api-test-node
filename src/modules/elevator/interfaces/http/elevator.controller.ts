@@ -1,4 +1,3 @@
-// src/modules/elevator/interfaces/http/elevator.controller.ts
 import { Controller, Post, Get, Body, Param, Query, UseInterceptors } from '@nestjs/common';
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';

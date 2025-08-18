@@ -27,7 +27,13 @@ export class CallElevatorHandler
       command.toFloor,
     );
 
-    const elevator = await this.repository.findById(elevatorId);
+    let elevator = await this.repository.findById(elevatorId);
+    
+    if (!elevator) {
+      this.logger.log(`Elevator ${elevatorId} not found in database, creating new elevator`);
+      elevator = await this.repository.createElevator(elevatorId);
+    }
+
     elevator.call(command.fromFloor, command.toFloor);
 
     await this.repository.save(elevator);

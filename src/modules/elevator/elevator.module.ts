@@ -34,6 +34,7 @@ import { MovementProcessor } from './infrastructure/queues/processors/movement.p
 import { getRedisConfig, getKafkaConfig } from '../../config';
 import { KafkaProducer } from './infrastructure/adapters/kafka.provider';
 import { ElevatorMovementQueue } from './infrastructure/adapters/elevator.queue';
+import { LoggingModule, QueryLoggerService } from '../logging';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { ElevatorMovementQueue } from './infrastructure/adapters/elevator.queue'
     BullModule.registerQueue({
       name: 'elevator-movement',
     }),
+    LoggingModule,
   ],
   controllers: [ElevatorController],
   providers: [
@@ -70,7 +72,6 @@ import { ElevatorMovementQueue } from './infrastructure/adapters/elevator.queue'
       },
       inject: [KafkaProducer],
     },
-
     ElevatorGateway,
     ElevatorRepository,
     ElevatorEventStore,

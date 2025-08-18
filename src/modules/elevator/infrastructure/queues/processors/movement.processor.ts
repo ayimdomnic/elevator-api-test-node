@@ -28,67 +28,72 @@ export class MovementProcessor {
   @Process('move')
   async handleMovement(job: Job<MovementJobData>): Promise<void> {
     const { elevatorId, fromFloor, toFloor, direction } = job.data;
-    
-    this.logger.log(`Starting movement for elevator ${elevatorId}: ${fromFloor} -> ${toFloor}`);
+
+    this.logger.log(
+      `Starting movement for elevator ${elevatorId}: ${fromFloor} -> ${toFloor}`,
+    );
 
     try {
       let currentFloor = fromFloor;
       const increment = direction === 'UP' ? 1 : -1;
 
       while (currentFloor !== toFloor) {
-        const progress = Math.abs(currentFloor - fromFloor) / Math.abs(toFloor - fromFloor) * 100;
+        currentFloor += increment; // Update floor first
+        const progress =
+          (Math.abs(currentFloor - fromFloor) / Math.abs(toFloor - fromFloor)) *
+          100;
         job.progress(progress);
 
-        currentFloor += increment;
-        
-        await this.updateFloorPosition(elevatorId, currentFloor, toFloor, direction);
-        
-        this.websocketAdapter.broadcast('elevator-movement', {
-          elevatorId,
-          currentFloor,
-          targetFloor: toFloor,
-          direction,
-          isMoving: true,
-          progress,
-          timestamp: new Date(),
-        });
-
-        this.logger.debug(`Elevator ${elevatorId} reached floor ${currentFloor}`);
-
         if (currentFloor !== toFloor) {
+          // Only update for intermediate floors
+          await this.updateFloorPosition(
+            elevatorId,
+            currentFloor,
+            toFloor,
+            direction,
+          );
+          this.websocketAdapter.broadcast('elevator-movement', {
+            elevatorId,
+            currentFloor,
+            targetFloor: toFloor,
+            direction,
+            isMoving: true,
+            progress,
+            timestamp: new Date(),
+          });
+          this.logger.debug(
+            `Elevator ${elevatorId} reached floor ${currentFloor}`,
+          );
           await this.delay(this.FLOOR_TRAVEL_TIME);
         }
       }
 
       await this.completeMovement(elevatorId, toFloor);
-      
-      this.logger.log(`Elevator ${elevatorId} completed movement to floor ${toFloor}`);
-      
+      this.logger.log(
+        `Elevator ${elevatorId} completed movement to floor ${toFloor}`,
+      );
     } catch (error) {
       this.logger.error(`Movement failed for elevator ${elevatorId}:`, error);
-      
       await this.redis.hmset(`elevator:${elevatorId}:state`, {
         state: 'IDLE',
         direction: 'IDLE',
         targetFloor: '',
         lastUpdated: new Date().toISOString(),
       });
-      
       this.websocketAdapter.broadcast('elevator-error', {
         elevatorId,
         error: 'Movement failed',
         timestamp: new Date(),
       });
-      
       throw error;
     }
   }
 
   private async updateFloorPosition(
-    elevatorId: string, 
-    currentFloor: number, 
-    targetFloor: number, 
-    direction: string
+    elevatorId: string,
+    currentFloor: number,
+    targetFloor: number,
+    direction: string,
   ): Promise<void> {
     await this.redis.hmset(`elevator:${elevatorId}:state`, {
       currentFloor: currentFloor.toString(),
@@ -99,7 +104,10 @@ export class MovementProcessor {
     });
   }
 
-  private async completeMovement(elevatorId: string, finalFloor: number): Promise<void> {
+  private async completeMovement(
+    elevatorId: string,
+    finalFloor: number,
+  ): Promise<void> {
     await this.redis.hmset(`elevator:${elevatorId}:state`, {
       currentFloor: finalFloor.toString(),
       state: 'DOORS_OPENING',
@@ -111,9 +119,9 @@ export class MovementProcessor {
     const arrivalEvent = new ElevatorArrivedEvent(
       elevatorId,
       finalFloor,
-      new Date()
+      new Date(),
     );
-    
+
     this.eventBus.publish(arrivalEvent);
 
     this.websocketAdapter.broadcast('elevator-arrived', {
@@ -128,7 +136,7 @@ export class MovementProcessor {
         state: 'DOORS_CLOSING',
         lastUpdated: new Date().toISOString(),
       });
-      
+
       this.websocketAdapter.broadcast('elevator-update', {
         elevatorId,
         state: 'DOORS_CLOSING',
@@ -141,7 +149,7 @@ export class MovementProcessor {
         state: 'IDLE',
         lastUpdated: new Date().toISOString(),
       });
-      
+
       this.websocketAdapter.broadcast('elevator-update', {
         elevatorId,
         state: 'IDLE',
@@ -151,15 +159,15 @@ export class MovementProcessor {
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   @Process('emergency-stop')
   async handleEmergencyStop(job: Job<{ elevatorId: string }>): Promise<void> {
     const { elevatorId } = job.data;
-    
+
     this.logger.warn(`Emergency stop for elevator ${elevatorId}`);
-    
+
     await this.redis.hmset(`elevator:${elevatorId}:state`, {
       state: 'MAINTENANCE',
       direction: 'IDLE',

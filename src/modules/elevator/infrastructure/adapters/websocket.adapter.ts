@@ -21,7 +21,6 @@ export class WebSocketAdapter implements OnGatewayConnection, OnGatewayDisconnec
     this.connectedClients.add(client.id);
     this.logger.log(`Client connected: ${client.id}. Total: ${this.connectedClients.size}`);
     
-    // Send initial connection confirmation
     client.emit('connection-established', {
       clientId: client.id,
       timestamp: new Date(),
@@ -48,7 +47,6 @@ export class WebSocketAdapter implements OnGatewayConnection, OnGatewayDisconnec
 
     this.logger.debug(`Broadcasting ${event} to ${connectedClientsCount} clients:`, data);
     
-    // Add metadata to all broadcasts
     const enrichedData = {
       ...data,
       eventType: event,
@@ -59,7 +57,6 @@ export class WebSocketAdapter implements OnGatewayConnection, OnGatewayDisconnec
     this.server.emit(event, enrichedData);
   }
 
-  // Specific methods for elevator events
   broadcastElevatorUpdate(elevatorId: string, state: any): void {
     this.broadcast('elevator-update', {
       elevatorId,

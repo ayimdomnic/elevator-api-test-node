@@ -4,7 +4,7 @@ import { Redis } from 'ioredis';
 import { ElevatorRepository } from '../../infrastructure/repositories/elevator.repository';
 import { WebSocketAdapter } from '../../infrastructure/adapters/websocket.adapter';
 
-interface MovementJobData {
+export interface MovementJobData {
   elevatorId: string;
   fromFloor: number;
   toFloor: number;

@@ -178,7 +178,6 @@ MAX_ELEVATORS=5
    Example `docker-compose.yml` (SASL-disabled to resolve `container elevator-api-node-kafka-1 exited (1)`):
 
    ```yaml
-   version: '3.8'
    services:
      postgres:
        image: postgres:14
@@ -570,57 +569,6 @@ The project includes unit and integration tests using Jest, ensuring robust cove
 - **Asynchronous Movement**: Tests simulate multiple elevators moving independently, with segregated logs stored in PostgreSQL and real-time updates via WebSocket.
 - **Timing**: `MovementProcessor` uses `MOVE_TIMER_PER_FLOOR=5000` (5 seconds per floor) and `DOOR_OPERATION_TIME=2000` (2 seconds for door open/close).
 - **Query Tracking**: Tests verify that SQL queries are logged with tracking metadata (handled by `QueryTrackingInterceptor`).
-
----
-
-## Deployment
-
-### Local Deployment
-
-1. **Build the Application**:
-
-   ```bash
-   pnpm run build
-   ```
-
-2. **Start Dependencies**:
-
-   ```bash
-   docker-compose up -d
-   ```
-
-3. **Run the Application**:
-   ```bash
-   pnpm run start:prod
-   ```
-
-### Cloud Deployment with Mau
-
-Deploy to AWS using [NestJS Mau](https://mau.nestjs.com):
-
-1. Install Mau CLI:
-
-   ```bash
-   pnpm install -g mau
-   ```
-
-2. Deploy:
-   ```bash
-   mau deploy
-   ```
-
-Follow the prompts to configure AWS. Mau handles containerization, scaling, and load balancing.
-
----
-
-## Resources
-
-- **Repository**: [Insert GitHub/Bitbucket/GitLab link here]
-- **NestJS Documentation**: [https://docs.nestjs.com](https://docs.nestjs.com)
-- **NestJS Discord**: [https://discord.gg/G7Qnnhy](https://discord.gg/G7Qnnhy)
-- **NestJS Mau**: [https://mau.nestjs.com](https://mau.nestjs.com)
-
----
 
 ---
 

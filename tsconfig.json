@@ -7,23 +7,23 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "./dist",
-    "rootDir": "./src",
-    "baseUrl": "./src",
+    "rootDir": "./",
+    "baseUrl": "./",
     "paths": {
-      "@app/*": ["*"],
-      "@app/controllers/*": ["controllers/*"],
-      "@app/services/*": ["services/*"],
-      "@app/repositories/*": ["repositories/*"],
-      "@app/middleware/*": ["middleware/*"],
-      "@app/utils/*": ["utils/*"],
-      "@app/config/*": ["config/*"],
-      "@app/workers/*": ["workers/*"],
-      "@app/types/*": ["types/*"]
+      "@app/*": ["src/*"],
+      "@app/controllers/*": ["src/controllers/*"],
+      "@app/services/*": ["src/services/*"],
+      "@app/repositories/*": ["src/repositories/*"],
+      "@app/middleware/*": ["src/middleware/*"],
+      "@app/utils/*": ["src/utils/*"],
+      "@app/config/*": ["src/config/*"],
+      "@app/workers/*": ["src/workers/*"],
+      "@app/types/*": ["src/types/*"]
     },
     "moduleResolution": "node",
     "resolveJsonModule": true,
     "sourceMap": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "tests/**/*"]
+  "include": ["src/**/*", "scripts/**/*"],
+  "exclude": ["node_modules", "dist", "tests"]
 }

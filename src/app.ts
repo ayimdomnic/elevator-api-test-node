@@ -5,43 +5,51 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import swaggerUi from 'swagger-ui-express';
 import { createServer } from 'http';
-import { Pool } from 'pg';
+import {
+  Pool,
+  QueryConfig,
+  QueryResult,
+  QueryArrayConfig,
+  QueryResultRow,
+} from 'pg';
 import Redis from 'ioredis';
 import Bull from 'bull';
-
-import { ElevatorController } from './controllers/elevator.controller';
-import { ElevatorCallService } from './services/elevator-call.service';
-import { ElevatorStatusService } from './services/elevator-status.service';
-import { ElevatorLogService } from './services/elevator-log.service';
-import { ElevatorEventLoggingService } from './services/elevator-event-logging.service';
-import { CacheService } from './services/cache.service';
-import { QueryLoggingService } from './services/query-logging.service';
-import { WebSocketService } from './services/websocket.service';
-import { ElevatorWorker } from './workers/elevator.worker';
-import { ElevatorRepository } from './repositories/elevator.respository';
-import { ElevatorLogRepository } from './repositories/elevator-log.repository';
-
-import { errorHandler } from './middleware/error.handler';
-import { idempotencyMiddleware } from './middleware/idempotency';
+import {
+  createSuccessResponse,
+  createErrorResponse,
+} from '@app/utils/response';
+import { Logger } from '@app/utils/logger';
+import { ElevatorController } from '@app/controllers/elevator.controller';
+import { ElevatorCallService } from '@app/services/elevator-call.service';
+import { ElevatorStatusService } from '@app/services/elevator-status.service';
+import { ElevatorLogService } from '@app/services/elevator-log.service';
+import { ElevatorEventLoggingService } from '@app/services/elevator-event-logging.service';
+import { CacheService } from '@app/services/cache.service';
+import { QueryLoggingService } from '@app/services/query-logging.service';
+import { WebSocketService } from '@app/services/websocket.service';
+import { ElevatorWorker } from '@app/workers/elevator.worker';
+import { ElevatorRepository } from '@app/repositories/elevator.respository';
+import { ElevatorLogRepository } from '@app/repositories/elevator-log.repository';
+import { errorHandler } from '@app/middleware/error.handler';
+import { idempotencyMiddleware } from '@app/middleware/idempotency';
 import {
   validateElevatorCall,
   validateElevatorId,
   validateLogFilters,
-} from './middleware/validation';
-
-import { Logger } from './utils/logger';
-import { swaggerSpec } from './config/swagger';
-import { databaseConfig } from './config/database';
-import { redisConfig } from './config/redis';
+} from '@app/middleware/validation';
+import { swaggerSpec } from '@app/config/swagger';
+import { databaseConfig } from '@app/config/database';
+import { redisConfig } from '@app/config/redis';
 
 class ElevatorApp {
   private app: express.Application;
-  private server: any;
-  private db: Pool;
-  private redis: Redis;
-  private elevatorQueue: Bull.Queue;
-  private websocketService: WebSocketService;
+  private server!: any;
+  private db!: Pool;
+  private redis!: Redis;
+  private elevatorQueue!: Bull.Queue;
+  private websocketService!: WebSocketService;
   private logger: Logger;
+
   constructor() {
     this.app = express();
     this.logger = new Logger();
@@ -59,30 +67,51 @@ class ElevatorApp {
 
     const queryLoggingService = new QueryLoggingService(this.db, this.logger);
     const originalQuery = this.db.query;
-    this.db.query = async function (
-      text: string,
-      params?: any[],
-      values?: any
-    ) {
+
+    this.db.query = async function <R extends QueryResultRow = any, I = any>(
+      queryConfig: string | QueryConfig<I> | QueryArrayConfig<I>,
+      values?: I
+    ): Promise<QueryResult<R>> {
       const logger = new Logger();
       const start = Date.now();
       try {
-        const result = await originalQuery.call(this, text, params, values);
+        const result = (await originalQuery.call(
+          this,
+          queryConfig as string,
+          values as never,
+          undefined as never
+        )) as unknown as QueryResult<R>;
         const duration = Date.now() - start;
 
         logger.debug('Database query executed', {
-          query: text.substring(0, 100),
+          query:
+            typeof queryConfig === 'string'
+              ? queryConfig.substring(0, 100)
+              : queryConfig.text.substring(0, 100),
           duration,
-          rows: result.rows?.length,
+          rowCount: result.rowCount ?? 0,
         });
 
-        await queryLoggingService.logSQLQuery(text, params || [], duration, {});
+        await queryLoggingService.logSQLQuery(
+          typeof queryConfig === 'string' ? queryConfig : queryConfig.text,
+          Array.isArray(values) ? values : [],
+          duration,
+          {
+            userId: undefined,
+            endpoint: undefined,
+            ipAddress: undefined,
+            userAgent: undefined,
+          }
+        );
 
         return result;
       } catch (error) {
         const duration = Date.now() - start;
         logger.error('Database query failed', {
-          query: text.substring(0, 100),
+          query:
+            typeof queryConfig === 'string'
+              ? queryConfig.substring(0, 100)
+              : queryConfig.text.substring(0, 100),
           duration,
           error: (error as Error).message,
         });
@@ -100,7 +129,7 @@ class ElevatorApp {
 
     this.redis.on('error', error => {
       this.logger.error('Redis connection error', {
-        error: (error as Error).message,
+        error: error.message,
       });
     });
   }
@@ -146,7 +175,7 @@ class ElevatorApp {
     this.elevatorQueue.on('failed', (job, error) => {
       this.logger.error('Elevator movement failed', {
         jobId: job.id,
-        error: (error as Error).message,
+        error: error.message,
       });
     });
   }
@@ -167,12 +196,10 @@ class ElevatorApp {
       rateLimit({
         windowMs: 15 * 60 * 1000,
         max: 100,
-        message: {
-          error: {
-            code: 'RATE_LIMIT_EXCEEDED',
-            message: 'Too many requests from this IP',
-          },
-        },
+        message: createErrorResponse(
+          'RATE_LIMIT_EXCEEDED',
+          'Too many requests from this IP'
+        ),
       })
     );
 
@@ -234,11 +261,13 @@ class ElevatorApp {
     );
 
     this.app.get('/health', (req, res) => {
-      res.json({
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        version: process.env.npm_package_version || '1.0.0',
-      });
+      res.json(
+        createSuccessResponse({
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          version: process.env.npm_package_version || '1.0.0',
+        })
+      );
     });
 
     this.app.use('/api-docs', swaggerUi.serve);
@@ -251,18 +280,15 @@ class ElevatorApp {
       validateElevatorCall,
       elevatorController.callElevator.bind(elevatorController)
     );
-
     apiRouter.get(
       '/elevators/status',
       elevatorController.getStatus.bind(elevatorController)
     );
-
     apiRouter.get(
       '/elevators/status/:elevatorId',
       validateElevatorId,
       elevatorController.getStatus.bind(elevatorController)
     );
-
     apiRouter.get(
       '/elevators/logs',
       validateLogFilters,
@@ -272,13 +298,9 @@ class ElevatorApp {
     this.app.use('/api/v1', apiRouter);
 
     this.app.use('*', (req, res) => {
-      res.status(404).json({
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Endpoint not found',
-        },
-      });
+      res
+        .status(404)
+        .json(createErrorResponse('NOT_FOUND', 'Endpoint not found'));
     });
   }
 
@@ -334,7 +356,7 @@ if (require.main === module) {
   app.start().catch(error => {
     const logger = new Logger();
     logger.error('Failed to start elevator system', {
-      error: (error as Error).message,
+      error: error.message,
     });
     process.exit(1);
   });

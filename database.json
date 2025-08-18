@@ -1,18 +1,18 @@
 {
     "dev": {
       "driver": "pg",
-      "host": { "ENV": "DB_HOST" },
-      "port": { "ENV": "DB_PORT" },
-      "database": { "ENV": "DB_NAME" },
-      "user": { "ENV": "DB_USER" },
-      "password": { "ENV": "DB_PASSWORD" }
+      "host": "localhost",
+      "port": 5435,
+      "database": "elevator_db",
+      "user": "elevator_user",
+      "password": "elevator_pass"
     },
     "test": {
       "driver": "pg",
-      "host": { "ENV": "TEST_DB_HOST" },
-      "port": { "ENV": "TEST_DB_PORT" },
-      "database": { "ENV": "TEST_DB_NAME" },
-      "user": { "ENV": "TEST_DB_USER" },
-      "password": { "ENV": "TEST_DB_PASSWORD" }
+      "host": "localhost",
+      "port": 5435,
+      "database": "elevator_db_test",
+      "user": "elevator_user",
+      "password": "elevator_pass"
     }
   }

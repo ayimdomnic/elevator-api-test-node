@@ -58,6 +58,19 @@ $ pnpm run test:e2e
 $ pnpm run test:cov
 ```
 
+## Architecture
+```mermaid
+flowchart TB
+  API[API Layer] -->|Commands| CQRS[(Command Bus)]
+  CQRS -->|Events| Kafka[(Kafka)]
+  Kafka -->|Consume| Worker[Elevator Worker]
+  Worker -->|State| Redis[(Redis)]
+  Redis -->|Read Model| API
+  API -->|Traces| Jaeger
+  Jaeger --> Grafana
+  Worker -->|Logs| ELK
+```
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

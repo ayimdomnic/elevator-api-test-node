@@ -8,7 +8,13 @@ import { AuditModule } from './modules/audit/audit.module';
 import { DatabaseModule } from './modules/database/database.module';
 
 @Module({
-  imports: [ElevatorModule, WebsocketModule, HealthModule, AuditModule, DatabaseModule],
+  imports: [
+    ElevatorModule,
+    WebsocketModule,
+    HealthModule,
+    AuditModule,
+    DatabaseModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

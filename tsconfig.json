@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": "./src",
+    "paths": {
+      "@app/*": ["*"],
+      "@app/controllers/*": ["controllers/*"],
+      "@app/services/*": ["services/*"],
+      "@app/repositories/*": ["repositories/*"],
+      "@app/middleware/*": ["middleware/*"],
+      "@app/utils/*": ["utils/*"],
+      "@app/config/*": ["config/*"],
+      "@app/workers/*": ["workers/*"],
+      "@app/types/*": ["types/*"]
+    },
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "sourceMap": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "tests/**/*"]
+}

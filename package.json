@@ -9,7 +9,11 @@
     "test:watch": "jest --config jest.config.ts --watch",
     "test:coverage": "jest --config jest.config.ts --coverage",
     "lint": "eslint 'src/**/*.{ts,tsx}' --fix",
-    "format": "prettier --write 'src/**/*.{ts,tsx,json}'"
+    "format": "prettier --write 'src/**/*.{ts,tsx,json}'",
+    "migrate": "db-migrate up -e dev",
+    "migrate:down": "db-migrate down -e dev",
+    "migrate:test": "db-migrate up -e test",
+    "migrate:reset": "db-migrate reset -e dev"
   },
   "keywords": [],
   "author": "",

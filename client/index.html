@@ -1,0 +1,167 @@
+<!-- client/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Elevator API Client</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; }
+    #events { margin-top: 20px; padding: 10px; border: 1px solid #ddd; max-height: 300px; overflow-y: auto; }
+    button { margin: 5px; padding: 8px 16px; }
+  </style>
+</head>
+<body>
+  <h1>Elevator API Client</h1>
+  <div>
+    <h2>Control Panel</h2>
+    <label>Elevator ID: <input type="text" id="elevatorId" placeholder="uuid-123"></label>
+    <button onclick="subscribe()">Subscribe</button>
+    <button onclick="unsubscribe()">Unsubscribe</button>
+    <br>
+    <label>From Floor: <input type="number" id="fromFloor" min="0" max="10"></label>
+    <label>To Floor: <input type="number" id="toFloor" min="0" max="10"></label>
+    <label>User ID: <input type="text" id="userId" placeholder="user-uuid-123"></label>
+    <button onclick="callElevator()">Call Elevator</button>
+  </div>
+  <h2>Elevator States</h2>
+  <table id="elevatorTable">
+    <thead>
+      <tr>
+        <th>Elevator ID</th>
+        <th>Current Floor</th>
+        <th>State</th>
+        <th>Direction</th>
+        <th>Target Floor</th>
+        <th>Progress</th>
+        <th>Last Updated</th>
+      </tr>
+    </thead>
+    <tbody id="elevatorBody"></tbody>
+  </table>
+  <h2>Event Log</h2>
+  <div id="events"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
+  <script>
+    const socket = io('http://localhost:3000/elevators', {
+      withCredentials: true,
+      extraHeaders: {
+        'Origin': 'http://localhost:9001'
+      }
+    });
+    const elevatorTable = document.getElementById('elevatorBody');
+    const eventsDiv = document.getElementById('events');
+    let elevators = {};
+
+    function logEvent(message) {
+      const p = document.createElement('p');
+      p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      eventsDiv.prepend(p);
+    }
+
+    socket.on('connect', () => {
+      logEvent('Connected to WebSocket');
+      socket.emit('get-elevator-status', {});
+    });
+
+    socket.on('connect_error', (error) => {
+      logEvent(`Connection error: ${error.message}`);
+    });
+
+    socket.on('elevator-states', (states) => {
+      elevatorTable.innerHTML = '';
+      states.forEach(state => updateElevator(state));
+      logEvent(`Received initial states for ${states.length} elevators`);
+    });
+
+    socket.on('elevator-state', (state) => {
+      updateElevator(state);
+      logEvent(`Received state for elevator ${state.elevatorId}: ${state.state}`);
+    });
+
+    socket.on('elevator-movement', (data) => {
+      updateElevator(data);
+      logEvent(`Elevator ${data.elevatorId} moved to floor ${data.currentFloor} (${data.progress}%)`);
+    });
+
+    socket.on('elevator-arrived', (data) => {
+      updateElevator(data);
+      logEvent(`Elevator ${data.elevatorId} arrived at floor ${data.currentFloor}`);
+    });
+
+    socket.on('elevator-doors', (data) => {
+      logEvent(`Elevator ${data.elevatorId} doors: ${data.doorState}`);
+    });
+
+    socket.on('elevator-error', (data) => {
+      logEvent(`Error for elevator ${data.elevatorId}: ${data.error}`);
+    });
+
+    socket.on('elevator-emergency-stop', (data) => {
+      logEvent(`Emergency stop for elevator ${data.elevatorId}`);
+    });
+
+    function updateElevator(state) {
+      elevators[state.elevatorId] = state;
+      renderTable();
+    }
+
+    function renderTable() {
+      elevatorTable.innerHTML = '';
+      Object.values(elevators).forEach(state => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${state.elevatorId}</td>
+          <td>${state.currentFloor}</td>
+          <td>${state.state}</td>
+          <td>${state.direction}</td>
+          <td>${state.targetFloor || '-'}</td>
+          <td>${state.progress ? state.progress.toFixed(2) + '%' : '-'}</td>
+          <td>${new Date(state.lastUpdated).toLocaleTimeString()}</td>
+        `;
+        elevatorTable.appendChild(row);
+      });
+    }
+
+    function subscribe() {
+      const elevatorId = document.getElementById('elevatorId').value;
+      if (elevatorId) {
+        socket.emit('subscribe-elevator', { elevatorId });
+        logEvent(`Subscribed to elevator ${elevatorId}`);
+      }
+    }
+
+    function unsubscribe() {
+      const elevatorId = document.getElementById('elevatorId').value;
+      if (elevatorId) {
+        socket.emit('unsubscribe-elevator', { elevatorId });
+        logEvent(`Unsubscribed from elevator ${elevatorId}`);
+      }
+    }
+
+    async function callElevator() {
+      const fromFloor = document.getElementById('fromFloor').value;
+      const toFloor = document.getElementById('toFloor').value;
+      const userId = document.getElementById('userId').value;
+      if (fromFloor && toFloor && userId) {
+        try {
+          const response = await fetch('http://localhost:3000/api/elevators/call', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ fromFloor: Number(fromFloor), toFloor: Number(toFloor), userId }),
+          });
+          const result = await response.json();
+          logEvent(`Called elevator ${result.elevatorId}: ${result.message}`);
+        } catch (error) {
+          logEvent(`Failed to call elevator: ${error.message}`);
+        }
+      }
+    }
+  </script>
+</body>
+</html>

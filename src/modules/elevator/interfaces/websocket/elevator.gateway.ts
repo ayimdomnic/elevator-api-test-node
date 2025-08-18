@@ -11,13 +11,23 @@ import {
   import { Logger, Inject } from '@nestjs/common';
   import Redis from 'ioredis';
   import { ElevatorRepository } from '../../infrastructure/repositories/elevator.repository';
+import { ConfigService } from '@nestjs/config';
   
   @WebSocketGateway({
+    namespace: '/elevators',
     cors: {
-      origin: '*',
+      origin: (origin, callback) => {
+        const configService = new ConfigService();
+        const allowedOrigins = configService.get('ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:9001').split(',');
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
+      methods: ['GET', 'POST'],
       credentials: true,
     },
-    namespace: '/elevators',
   })
   export class ElevatorGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer()

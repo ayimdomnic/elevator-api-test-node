@@ -1,26 +1,37 @@
-# Use Node.js 20 Alpine as base image for smaller footprint
-FROM node:20-alpine
+FROM node:20-alpine AS base
 
-# Install pnpm globally
 RUN npm install -g pnpm
 
-# Set working directory
 WORKDIR /app
 
-# Copy package.json, pnpm-lock.yaml
 COPY package.json pnpm-lock.yaml ./
 
-# Install dependencies with pnpm
 RUN pnpm install --frozen-lockfile
 
-# Copy source code
+RUN apk add --no-cache postgresql-client
+
 COPY . .
 
-# Build TypeScript
+FROM base AS builder
+WORKDIR /app
+
 RUN pnpm build
 
-# Expose port
-EXPOSE 3000
+COPY src/migrations ./dist/migrations
+RUN pnpm typeorm:migration:run
 
-# Start the application with pnpm
-CMD ["pnpm", "start"]
+FROM base AS production
+WORKDIR /app
+
+COPY --from=builder /app/dist ./dist
+COPY package.json pnpm-lock.yaml ./
+
+RUN pnpm install --prod --frozen-lockfile
+
+EXPOSE ${PORT:-3000}
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV REDIS_PORT=6380
+
+CMD ["pnpm", "start:prod"]

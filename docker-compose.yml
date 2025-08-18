@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-elevator_pass}
       POSTGRES_DB: ${DB_NAME:-elevator_db}
     ports:
-      - "${DB_PORT:-5435}:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -20,7 +20,7 @@ services:
   redis:
     image: redis:7
     ports:
-      - "${REDIS_PORT:-6380}:6379" # Redis runs on 6380 externally
+      - "${REDIS_PORT:-6380}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -36,15 +36,22 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_AUTH_PROVIDER_SASL: org.apache.zookeeper.server.auth.SASLAuthenticationProvider
+      ZOOKEEPER_SERVER_CNXN_FACTORY: org.apache.zookeeper.server.NettyServerCnxnFactory
+      ZOOKEEPER_SASL_ENABLED: "true"
+      JAVA_OPTS: "-Djava.security.auth.login.config=/etc/zookeeper/zookeeper_jaas.conf -Dzookeeper.requireClientAuthScheme=sasl"
     ports:
       - "2181:2181"
+    volumes:
+      - ./zookeeper_jaas.conf:/etc/zookeeper/zookeeper_jaas.conf
     networks:
       - elevator-network
     healthcheck:
       test: ["CMD", "bash", "-c", "echo ruok | nc 127.0.0.1 2181"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
   kafka:
     image: confluentinc/cp-kafka:7.3.0
@@ -56,25 +63,38 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_BROKERS:-kafka:9092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_BROKERS:-kafka:9092},SASL_PLAINTEXT://${KAFKA_BROKERS:-kafka:9092}
+      KAFKA_SECURITY_INTER_BROKER_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_SASL_MECHANISM_INTER_BROKER: PLAIN
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.authorizer.AclAuthorizer
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "true"
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_SUPER_USERS: User:admin;User:elevator_kafka_user
+      KAFKA_ZOOKEEPER_SASL_ENABLED: "true"
+    volumes:
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./client.properties:/etc/kafka/client.properties
     networks:
       - elevator-network
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka:9092", "--command-config", "/etc/kafka/client.properties"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
   app:
     build:
       context: .
       dockerfile: Dockerfile
     environment:
-      - NODE_ENV=${NODE_ENV:-development}
+      - NODE_ENV=${NODE_ENV:-production}
       - PORT=${PORT:-3000}
       - DB_HOST=postgres
       - DB_PORT=${DB_PORT:-5432}
@@ -82,11 +102,11 @@ services:
       - DB_USER=${DB_USER:-elevator_user}
       - DB_PASSWORD=${DB_PASSWORD:-elevator_pass}
       - REDIS_HOST=redis
-      - REDIS_PORT=${REDIS_PORT:-6380} # Updated to match external port
+      - REDIS_PORT=${REDIS_PORT:-6380}
       - KAFKA_BROKERS=${KAFKA_BROKERS:-kafka:9092}
-      - KAFKA_USERNAME=${KAFKA_USERNAME}
-      - KAFKA_PASSWORD=${KAFKA_PASSWORD}
       - KAFKA_SSL=${KAFKA_SSL:-false}
+      - KAFKA_USERNAME=${KAFKA_USERNAME:-elevator_kafka_user}
+      - KAFKA_PASSWORD=${KAFKA_PASSWORD:-elevator_kafka_pass}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - LOG_DIRECTORY=/app/logs
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
@@ -108,7 +128,7 @@ services:
         condition: service_healthy
     networks:
       - elevator-network
-    command: npm run start
+    command: pnpm start:prod
 
 volumes:
   postgres_data:

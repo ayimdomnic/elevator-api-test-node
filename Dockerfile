@@ -17,9 +17,6 @@ WORKDIR /app
 
 RUN pnpm build
 
-COPY src/migrations ./dist/migrations
-RUN pnpm typeorm:migration:run
-
 FROM base AS production
 WORKDIR /app
 

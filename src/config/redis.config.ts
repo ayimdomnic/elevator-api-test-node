@@ -1,5 +1,4 @@
 import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
 
 export const getRedisConfig = (configService: ConfigService) => ({
   host: configService.get('REDIS_HOST', 'localhost'),

@@ -8,7 +8,7 @@ interface MovementJobData {
   elevatorId: string;
   fromFloor: number;
   toFloor: number;
-  direction: 'UP' | 'DOWN';
+  direction: 'UP' | 'DOWN' | 'IDLE';
 }
 
 @Injectable()

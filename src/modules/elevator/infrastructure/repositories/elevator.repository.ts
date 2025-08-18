@@ -1,9 +1,9 @@
-// src/modules/elevator/infrastructure/repositories/elevator.repository.ts
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ElevatorAggregate } from '../../domain/elevator.aggregate';
 import { ElevatorEntity, ElevatorEventEntity } from '../persistence/entities';
+import { ElevatorState, Floor } from '../../domain/value-objects';
 
 @Injectable()
 export class ElevatorRepository {
@@ -29,6 +29,11 @@ export class ElevatorRepository {
       await this.elevatorRepo.save(elevator);
     }
 
+    // Convert database types to domain value objects
+    const currentFloor = new Floor(elevator.currentFloor);
+    const state = new ElevatorState(elevator.state as 
+      'IDLE' | 'MOVING' | 'DOORS_OPENING' | 'DOORS_CLOSING' | 'MAINTENANCE');
+
     // Reconstruct from events (Event Sourcing)
     const events = await this.eventRepo.find({
       where: { aggregateId: id },
@@ -37,27 +42,30 @@ export class ElevatorRepository {
 
     const aggregate = new ElevatorAggregate(
       id,
-      elevator.currentFloor,
-      elevator.state as any,
+      currentFloor,
+      state
     );
 
     // Apply events to rebuild state
     // (In a real implementation, you'd replay events to rebuild the aggregate)
-
+    // For now, we'll just return the aggregate with current state
     return aggregate;
   }
 
   async save(aggregate: ElevatorAggregate): Promise<void> {
+    // Convert domain types to database types
+    const elevatorData = {
+      id: aggregate.id,
+      currentFloor: aggregate.currentFloor,
+      state: aggregate.state,
+      direction: aggregate.direction,
+      targetFloor: aggregate.targetFloor,
+    };
+
     // Save current state snapshot
     await this.elevatorRepo.upsert(
-      {
-        id: aggregate.id,
-        currentFloor: aggregate.currentFloor,
-        state: aggregate.state,
-        direction: aggregate.direction,
-        targetFloor: aggregate.targetFloor,
-      },
-      ['id'],
+      elevatorData,
+      ['id']
     );
 
     // Save events

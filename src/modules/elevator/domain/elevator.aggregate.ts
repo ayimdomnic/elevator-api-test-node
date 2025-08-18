@@ -1,7 +1,6 @@
-// src/modules/elevator/domain/elevator.aggregate.ts
 import { AggregateRoot } from '@nestjs/cqrs';
 import { ElevatorCalledEvent, ElevatorMovingEvent, ElevatorArrivedEvent } from '../application/events';
-import { ElevatorState, Floor } from './value-objects/elevator.vo';
+import { ElevatorState, Floor } from './value-objects';
 import { ElevatorBusyException } from './exceptions/elevator-busy.exception';
 
 export class ElevatorAggregate extends AggregateRoot {
@@ -100,6 +99,10 @@ export class ElevatorAggregate extends AggregateRoot {
         this.processNextRequest();
       }, 2000);
     }
+  }
+
+  markEventsAsCommitted(): void {
+    this.commit();
   }
 
   static create(id: string, initialFloor: number = 0): ElevatorAggregate {

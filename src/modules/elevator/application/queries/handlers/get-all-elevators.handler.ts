@@ -3,6 +3,14 @@ import { Injectable, Inject } from '@nestjs/common';
 import { Redis } from 'ioredis';
 import { GetAllElevatorsQuery } from '../get-all-elevators.query';
 
+interface ElevatorState {
+  currentFloor?: string;
+  state?: string;
+  direction?: string;
+  targetFloor?: string;
+  lastUpdated?: string;
+}
+
 @QueryHandler(GetAllElevatorsQuery)
 @Injectable()
 export class GetAllElevatorsHandler implements IQueryHandler<GetAllElevatorsQuery> {
@@ -26,14 +34,15 @@ export class GetAllElevatorsHandler implements IQueryHandler<GetAllElevatorsQuer
     return results.map(([err, state], index) => {
       if (err) throw err;
       
+      const typedState = state as ElevatorState;
       const elevatorId = keys[index].split(':')[1];
       return {
         elevatorId,
-        currentFloor: parseInt(state.currentFloor as string) || 0,
-        state: state.state as string || 'IDLE',
-        direction: state.direction as string || 'IDLE',
-        targetFloor: state.targetFloor ? parseInt(state.targetFloor as string) : null,
-        lastUpdated: state.lastUpdated ? new Date(state.lastUpdated as string) : new Date(),
+        currentFloor: typedState.currentFloor ? parseInt(typedState.currentFloor) : 0,
+        state: typedState.state || 'IDLE',
+        direction: typedState.direction || 'IDLE',
+        targetFloor: typedState.targetFloor ? parseInt(typedState.targetFloor) : null,
+        lastUpdated: typedState.lastUpdated ? new Date(typedState.lastUpdated) : new Date(),
       };
     });
   }

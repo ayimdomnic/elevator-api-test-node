@@ -34,7 +34,7 @@ import { MovementProcessor } from './infrastructure/queues/processors/movement.p
 import { getRedisConfig, getKafkaConfig } from '../../config';
 import { KafkaProducer } from './infrastructure/adapters/kafka.provider';
 import { ElevatorMovementQueue } from './infrastructure/adapters/elevator.queue';
-import { LoggingModule, QueryLoggerService } from '../logging';
+import { LoggingModule } from '../logging';
 
 @Module({
   imports: [
@@ -86,6 +86,7 @@ import { LoggingModule, QueryLoggerService } from '../logging';
     GetAllElevatorsHandler,
     GetElevatorLogsHandler,
     ElevatorCalledHandler,
+    ElevatorMovementQueue,
     ElevatorMovingHandler,
     ElevatorArrivedHandler,
     KafkaProducerAdapter,

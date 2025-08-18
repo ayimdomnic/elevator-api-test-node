@@ -2,6 +2,7 @@ import { Processor, Process } from '@nestjs/bull';
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { Redis } from 'ioredis';
+import { EventBus } from '@nestjs/cqrs';
 import { WebSocketAdapter } from '../../adapters/websocket.adapter';
 import { ElevatorRepository } from '../../repositories/elevator.repository';
 
@@ -21,6 +22,7 @@ export class MovementProcessor {
     @Inject('REDIS_CLIENT') private readonly redis: Redis,
     private readonly websocketAdapter: WebSocketAdapter,
     private readonly repository: ElevatorRepository,
+    private readonly eventBus: EventBus,
   ) {}
 
   @Process('move')
@@ -28,53 +30,85 @@ export class MovementProcessor {
     const { elevatorId, fromFloor, toFloor, direction } = job.data;
 
     this.logger.log(
-      `Starting movement for elevator ${elevatorId}: ${fromFloor} -> ${toFloor}`,
+      `Starting movement for elevator ${elevatorId}: ${fromFloor} -> ${toFloor} (${direction})`,
     );
 
-    let currentFloor = fromFloor;
-    const step = direction === 'UP' ? 1 : -1;
+    try {
+      await this.processElevatorMovement(elevatorId);
+    } catch (error) {
+      this.logger.error(`Error processing elevator ${elevatorId} movement:`, error);
+      throw error;
+    }
+  }
 
-    while (currentFloor !== toFloor) {
+  private async processElevatorMovement(elevatorId: string): Promise<void> {
+    let elevator = await this.repository.findById(elevatorId);
+    
+    if (!elevator) {
+      this.logger.warn(`Elevator ${elevatorId} not found`);
+      return;
+    }
+
+    while (elevator.state === 'MOVING' && elevator.targetFloor !== null) {
+      this.logger.log(`Elevator ${elevatorId} moving from floor ${elevator.currentFloor} to ${elevator.targetFloor}`);
+      
       await this.delay(5000);
-      currentFloor += step;
-
+      
+      elevator.moveOneFloor();
+      
       await this.redis.hmset(`elevator:${elevatorId}:state`, {
-        currentFloor,
+        currentFloor: elevator.currentFloor,
+        state: elevator.state,
+        direction: elevator.direction,
+        targetFloor: elevator.targetFloor || '',
         lastUpdated: new Date().toISOString(),
-        state: currentFloor === toFloor ? 'ARRIVED' : 'MOVING',
       });
 
       this.websocketAdapter.broadcast('elevator-update', {
         elevatorId,
-        currentFloor,
-        state: currentFloor === toFloor ? 'ARRIVED' : 'MOVING',
-        direction: currentFloor === toFloor ? 'IDLE' : direction,
-        targetFloor: toFloor,
+        currentFloor: elevator.currentFloor,
+        state: elevator.state,
+        direction: elevator.direction,
+        targetFloor: elevator.targetFloor,
       });
 
-      this.logger.log(`Elevator ${elevatorId} at floor ${currentFloor}`);
+      
+      await this.repository.save(elevator);
+      this.eventBus.publishAll(elevator.getUncommittedEvents());
+      elevator.markEventsAsCommitted();
+
+     
+      if (elevator.state === 'DOORS_OPENING' as typeof elevator.state) {
+        await this.handleDoorSequence(elevatorId, elevator.currentFloor);
+
+        elevator = await this.repository.findById(elevatorId);
+        if (!elevator) break;
+      }
     }
 
-    await this.simulateDoors(elevatorId, currentFloor);
+    this.logger.log(`Movement completed for elevator ${elevatorId}`);
   }
 
-  private async simulateDoors(
-    elevatorId: string,
-    floor: number,
-  ): Promise<void> {
+  private async handleDoorSequence(elevatorId: string, currentFloor: number): Promise<void> {
+    // DOORS_OPENING (already set by domain)
+    this.logger.log(`Elevator ${elevatorId} doors opening at floor ${currentFloor}`);
+    
     await this.redis.hmset(`elevator:${elevatorId}:state`, {
       state: 'DOORS_OPENING',
+      currentFloor,
       lastUpdated: new Date().toISOString(),
     });
 
     this.websocketAdapter.broadcast('elevator-update', {
       elevatorId,
-      currentFloor: floor,
+      currentFloor,
       state: 'DOORS_OPENING',
+      direction: 'IDLE',
     });
 
     await this.delay(2000);
 
+    
     await this.redis.hmset(`elevator:${elevatorId}:state`, {
       state: 'DOORS_OPEN',
       lastUpdated: new Date().toISOString(),
@@ -82,7 +116,9 @@ export class MovementProcessor {
 
     this.websocketAdapter.broadcast('elevator-update', {
       elevatorId,
+      currentFloor,
       state: 'DOORS_OPEN',
+      direction: 'IDLE',
     });
 
     await this.delay(1000);
@@ -94,28 +130,37 @@ export class MovementProcessor {
 
     this.websocketAdapter.broadcast('elevator-update', {
       elevatorId,
+      currentFloor,
       state: 'DOORS_CLOSING',
+      direction: 'IDLE',
     });
 
     await this.delay(2000);
 
-    await this.redis.hmset(`elevator:${elevatorId}:state`, {
-      state: 'IDLE',
-      direction: 'IDLE',
-      targetFloor: '',
-      lastUpdated: new Date().toISOString(),
-    });
+    const elevator = await this.repository.findById(elevatorId);
+    if (elevator) {
+      
+      await this.redis.hmset(`elevator:${elevatorId}:state`, {
+        state: elevator.state,
+        direction: elevator.direction,
+        targetFloor: elevator.targetFloor || '',
+        lastUpdated: new Date().toISOString(),
+      });
 
-    this.websocketAdapter.broadcast('elevator-update', {
-      elevatorId,
-      state: 'IDLE',
-      direction: 'IDLE',
-      targetFloor: null,
-    });
+      this.websocketAdapter.broadcast('elevator-update', {
+        elevatorId,
+        currentFloor,
+        state: elevator.state,
+        direction: elevator.direction,
+        targetFloor: elevator.targetFloor,
+      });
 
-    this.logger.log(
-      `Elevator ${elevatorId} completed journey, now idle at floor ${floor}`,
-    );
+      await this.repository.save(elevator);
+      this.eventBus.publishAll(elevator.getUncommittedEvents());
+      elevator.markEventsAsCommitted();
+    }
+
+    this.logger.log(`Elevator ${elevatorId} completed door sequence, now ${elevator?.state} at floor ${currentFloor}`);
   }
 
   private delay(ms: number): Promise<void> {

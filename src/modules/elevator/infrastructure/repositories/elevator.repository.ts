@@ -15,11 +15,9 @@ export class ElevatorRepository {
   ) {}
 
   async findById(id: string): Promise<ElevatorAggregate> {
-    // Try to load from current state first
     let elevator = await this.elevatorRepo.findOne({ where: { id } });
 
     if (!elevator) {
-      // Create new elevator
       elevator = this.elevatorRepo.create({
         id,
         currentFloor: 0,
@@ -29,12 +27,10 @@ export class ElevatorRepository {
       await this.elevatorRepo.save(elevator);
     }
 
-    // Convert database types to domain value objects
     const currentFloor = new Floor(elevator.currentFloor);
     const state = new ElevatorState(elevator.state as 
       'IDLE' | 'MOVING' | 'DOORS_OPENING' | 'DOORS_CLOSING' | 'MAINTENANCE');
 
-    // Reconstruct from events (Event Sourcing)
     const events = await this.eventRepo.find({
       where: { aggregateId: id },
       order: { sequenceNumber: 'ASC' },
@@ -46,9 +42,6 @@ export class ElevatorRepository {
       state
     );
 
-    // Apply events to rebuild state
-    // (In a real implementation, you'd replay events to rebuild the aggregate)
-    // For now, we'll just return the aggregate with current state
     return aggregate;
   }
 

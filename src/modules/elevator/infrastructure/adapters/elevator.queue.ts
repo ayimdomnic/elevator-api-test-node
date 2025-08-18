@@ -1,8 +1,7 @@
-import { Injectable, Inject } from '@nestjs/common';
-import { Queue, Worker, Job } from 'bullmq';
-import { Redis } from 'ioredis';
-import { WebSocketAdapter } from './websocket.adapter';
-import { ElevatorRepository } from '../repositories/elevator.repository';
+// infrastructure/adapters/elevator.queue.ts
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
 
 interface MovementJobData {
   elevatorId: string;
@@ -13,107 +12,78 @@ interface MovementJobData {
 
 @Injectable()
 export class ElevatorMovementQueue {
-  private readonly queue: Queue;
-  private readonly worker: Worker;
+  private readonly logger = new Logger(ElevatorMovementQueue.name);
 
   constructor(
-    @Inject('REDIS_CLIENT') private readonly redis: Redis,
-    private readonly repository: ElevatorRepository,
-    private readonly websocketAdapter: WebSocketAdapter,
-  ) {
-    this.queue = new Queue('elevator-movement', {
-      connection: this.redis,
-    });
-
-    this.worker = new Worker(
-      'elevator-movement',
-      async (job: Job<MovementJobData>) => this.processMovement(job),
-      {
-        connection: this.redis,
-        concurrency: 10,
-      },
-    );
-  }
+    @InjectQueue('elevator-movement') private readonly movementQueue: Queue,
+  ) {}
 
   async addMovementJob(data: MovementJobData): Promise<void> {
-    await this.queue.add('move', data, {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 2000 },
-    });
-  }
+    try {
+      await this.removeExistingJobs(data.elevatorId);
 
-  private async processMovement(job: Job<MovementJobData>): Promise<void> {
-    const { elevatorId, fromFloor, toFloor } = job.data;
-    const elevator = await this.repository.findById(elevatorId);
-
-    let currentFloor = fromFloor;
-    const direction = toFloor > fromFloor ? 1 : -1;
-
-    while (currentFloor !== toFloor) {
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-
-      currentFloor += direction;
-      elevator.moveOneFloor();
-
-      await this.redis.hmset(`elevator:${elevatorId}:state`, {
-        currentFloor,
-        lastUpdated: new Date().toISOString(),
+      await this.movementQueue.add('move', data, {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+        removeOnComplete: 10,
+        removeOnFail: 5,
       });
 
-      this.websocketAdapter.broadcast('elevator-update', {
-        elevatorId,
-        currentFloor,
-        state: currentFloor === toFloor ? 'ARRIVED' : 'MOVING',
-        direction:
-          currentFloor === toFloor ? 'IDLE' : direction > 0 ? 'UP' : 'DOWN',
-      });
-
-      await this.repository.save(elevator);
+      this.logger.log(`Added movement job for elevator ${data.elevatorId}: ${data.fromFloor} -> ${data.toFloor} (${data.direction})`);
+    } catch (error) {
+      this.logger.error(`Failed to add movement job for elevator ${data.elevatorId}:`, error);
+      throw error;
     }
-
-    await this.simulateDoorsOpening(elevatorId, currentFloor);
   }
 
-  private async simulateDoorsOpening(
-    elevatorId: string,
-    floor: number,
-  ): Promise<void> {
-    await this.redis.hmset(`elevator:${elevatorId}:state`, {
-      state: 'DOORS_OPENING',
-      lastUpdated: new Date().toISOString(),
-    });
+  private async removeExistingJobs(elevatorId: string): Promise<void> {
+    try {
+      const waitingJobs = await this.movementQueue.getWaiting();
+      const activeJobs = await this.movementQueue.getActive();
 
-    this.websocketAdapter.broadcast('elevator-update', {
-      elevatorId,
-      currentFloor: floor,
-      state: 'DOORS_OPENING',
-    });
+      for (const job of waitingJobs) {
+        if (job.data && job.data.elevatorId === elevatorId) {
+          await job.remove();
+          this.logger.log(`Removed waiting movement job for elevator ${elevatorId}`);
+        }
+      }
 
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+      for (const job of activeJobs) {
+        if (job.data && job.data.elevatorId === elevatorId) {
+          this.logger.log(`Found active movement job for elevator ${elevatorId}, letting it complete`);
+        }
+      }
+    } catch (error) {
+      this.logger.error(`Error removing existing jobs for elevator ${elevatorId}:`, error);
+    }
+  }
 
-    await this.redis.hmset(`elevator:${elevatorId}:state`, {
-      state: 'DOORS_CLOSING',
-      lastUpdated: new Date().toISOString(),
-    });
+  async getQueueStats(): Promise<any> {
+    const [waiting, active, completed, failed] = await Promise.all([
+      this.movementQueue.getWaiting(),
+      this.movementQueue.getActive(), 
+      this.movementQueue.getCompleted(),
+      this.movementQueue.getFailed(),
+    ]);
 
-    this.websocketAdapter.broadcast('elevator-update', {
-      elevatorId,
-      state: 'DOORS_CLOSING',
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    await this.redis.hmset(`elevator:${elevatorId}:state`, {
-      state: 'IDLE',
-      direction: 'IDLE',
-      targetFloor: '',
-      lastUpdated: new Date().toISOString(),
-    });
-
-    this.websocketAdapter.broadcast('elevator-update', {
-      elevatorId,
-      state: 'IDLE',
-      direction: 'IDLE',
-    });
+    return {
+      waiting: waiting.length,
+      active: active.length,
+      completed: completed.length,
+      failed: failed.length,
+      waitingJobs: waiting.map(job => ({
+        id: job.id,
+        data: job.data,
+        opts: job.opts,
+      })),
+      activeJobs: active.map(job => ({
+        id: job.id,
+        data: job.data,
+        opts: job.opts,
+      })),
+    };
   }
 }

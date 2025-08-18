@@ -1,14 +1,14 @@
-import { Kafka, Partitioners } from 'kafkajs';
+import { ConfigService } from '@nestjs/config';
 
-export const kafka = new Kafka({
+export const getKafkaConfig = (configService: ConfigService) => ({
   clientId: 'elevator-service',
-  brokers: [process.env.KAFKA_BROKER_URL],
-});
-
-export const producer = kafka.producer({
-  createPartitioner: Partitioners.DefaultPartitioner,
-});
-
-export const consumer = kafka.consumer({
-  groupId: 'elevator-group',
+  brokers: configService.get('KAFKA_BROKERS', 'localhost:9092').split(','),
+  ssl: configService.get('KAFKA_SSL') === 'true',
+  sasl: configService.get('KAFKA_USERNAME')
+    ? {
+        mechanism: 'plain',
+        username: configService.get('KAFKA_USERNAME'),
+        password: configService.get('KAFKA_PASSWORD'),
+      }
+    : undefined,
 });

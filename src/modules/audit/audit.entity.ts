@@ -1,10 +1,15 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from "typeorm";
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 @Entity({
-    name: 'audit_logs',
+  name: 'audit_logs',
 })
 export class AuditLog {
-    @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column()

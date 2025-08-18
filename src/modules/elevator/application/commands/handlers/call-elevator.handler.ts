@@ -1,14 +1,38 @@
-import { CommandHandler, EventBus, ICommandHandler } from "@nestjs/cqrs";
-import { CallElevatorCommand } from "../call-elevator.command";
-
+import { CommandHandler, ICommandHandler, EventBus } from '@nestjs/cqrs';
+import { Injectable, Logger } from '@nestjs/common';
+import { CallElevatorCommand } from '../call-elevator.command';
+import { ElevatorRepository } from '../../../infrastructure/repositories/elevator.repository';
+import { ElevatorAssignmentService } from '../../../application/services/elevator-assignment.service';
 
 @CommandHandler(CallElevatorCommand)
-export class CallElevatorHandler implements ICommandHandler<CallElevatorCommand> {
-    constructor(private readonly commandBus: EventBus) {}
+@Injectable()
+export class CallElevatorHandler
+  implements ICommandHandler<CallElevatorCommand>
+{
+  private readonly logger = new Logger(CallElevatorHandler.name);
 
-    async execute(command: CallElevatorCommand): Promise<void> {
-        const { elevatorId, fromFloor, toFloor } = command;
+  constructor(
+    private readonly repository: ElevatorRepository,
+    private readonly assignmentService: ElevatorAssignmentService,
+    private readonly eventBus: EventBus,
+  ) {}
 
-        console.log({elevatorId, fromFloor, toFloor});
-    }
+  async execute(command: CallElevatorCommand): Promise<{ elevatorId: string }> {
+    this.logger.log(
+      `Processing elevator call: ${command.fromFloor} -> ${command.toFloor}`,
+    );
+
+    const elevatorId = await this.assignmentService.assignElevator(
+      command.fromFloor,
+      command.toFloor,
+    );
+
+    const elevator = await this.repository.findById(elevatorId);
+    elevator.call(command.fromFloor, command.toFloor);
+
+    await this.repository.save(elevator);
+    this.eventBus.publishAll(elevator.getUncommittedEvents());
+
+    return { elevatorId };
+  }
 }

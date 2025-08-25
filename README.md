@@ -55,7 +55,7 @@ The Elevator API fulfills the Beem Tech Challenge Task 1 requirements as follows
   - API endpoints implemented in TypeScript with NestJS.
   - Unit tests written with Jest, covering `ElevatorGateway`, `ElevatorMovementQueue`, and `MovementProcessor`.
   - Comprehensive installation and testing instructions provided below.
-  - Code repository available at [insert GitHub/Bitbucket/GitLab link here].
+  - Code repository available at [https://github.com/ayimdomnic/elevator-api-test-node](here).
 
 ---
 
